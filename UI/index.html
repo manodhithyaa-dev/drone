@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SKYCTRL - Ground Control Station</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="5" cy="5" r="2.5"/><circle cx="19" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/></svg>
+    <span>SKYCTRL</span>
+  </div>
+  <div class="pills" role="status" aria-label="System status">
+    <span class="pill" id="pill-conn">Link: -</span>
+    <span class="pill" id="pill-mode">Mode: -</span>
+    <span class="pill" id="pill-arm">DISARMED</span>
+    <span class="pill cyan" id="pill-sim">SIMULATION</span>
+  </div>
+  <button class="btn danger" id="btn-estop" type="button">Emergency stop</button>
+</header>
+
+<div class="banner" id="estop-banner" hidden>Emergency stop active. Outputs disabled and simulation frozen. Use "Reset simulation" to continue.</div>
+
+<main class="grid">
+  <section class="panel" id="panel-video" aria-labelledby="h-cam">
+    <div class="panel-head"><h2 id="h-cam">Camera</h2><span class="badge" id="cam-live">OFF</span><span class="meta" id="cam-meta"></span></div>
+    <div class="stage" id="video-stage">
+      <video id="cam-video" muted playsinline></video>
+      <canvas id="overlay"></canvas>
+      <div class="placeholder" id="cam-placeholder"><p id="cam-msg">Camera is off. Start the camera to use the local webcam.</p></div>
+    </div>
+    <div class="toolbar">
+      <button class="btn primary" id="btn-cam" type="button">Start camera</button>
+      <select id="cam-select" aria-label="Camera device"><option value="">Default camera</option></select>
+      <label class="check"><input type="checkbox" id="chk-cross"> Crosshair</label>
+      <label class="check"><input type="checkbox" id="chk-thirds"> Thirds</label>
+      <button class="btn" id="btn-fs" type="button">Fullscreen</button>
+    </div>
+    <p class="note">Local webcam preview (mirrored). This is not video from a drone-mounted camera.</p>
+  </section>
+
+  <section class="panel" id="panel-viz" aria-labelledby="h-viz">
+    <div class="panel-head"><h2 id="h-viz">3D drone</h2><span class="badge sim">SIMULATED</span></div>
+    <div class="viz" id="viz"><p class="viz-msg" id="viz-msg" hidden></p></div>
+    <div class="toolbar"><button class="btn" id="btn-reset-orient" type="button">Reset orientation</button></div>
+    <p class="note">Shows the requested control state, not measured IMU attitude. Drag to orbit, scroll to zoom.</p>
+  </section>
+
+  <section class="panel" id="panel-joy" aria-labelledby="h-joy">
+    <div class="panel-head"><h2 id="h-joy">Manual control</h2><span class="badge" id="manual-badge">DISABLED</span></div>
+    <div class="sticks">
+      <div class="stick-col">
+        <div class="joystick disabled" id="joy-left" tabindex="-1" role="group" aria-label="Left joystick: vertical throttle, horizontal yaw. Arrow keys move, Space centers.">
+          <span class="lab t">Throttle +</span><span class="lab b">Throttle -</span><span class="lab l">Yaw -</span><span class="lab r">Yaw +</span><div class="knob"></div>
+        </div>
+        <dl class="axes">
+          <div><dt>Throttle</dt><dd id="ax-throttle">+0.00 (+0%)</dd><span class="bar" id="bar-throttle"><i></i></span></div>
+          <div><dt>Yaw</dt><dd id="ax-yaw">+0.00 (+0%)</dd><span class="bar" id="bar-yaw"><i></i></span></div>
+        </dl>
+      </div>
+      <div class="stick-col">
+        <div class="joystick disabled" id="joy-right" tabindex="-1" role="group" aria-label="Right joystick: vertical pitch, horizontal roll. Arrow keys move, Space centers.">
+          <span class="lab t">Pitch +</span><span class="lab b">Pitch -</span><span class="lab l">Roll -</span><span class="lab r">Roll +</span><div class="knob"></div>
+        </div>
+        <dl class="axes">
+          <div><dt>Pitch</dt><dd id="ax-pitch">+0.00 (+0%)</dd><span class="bar" id="bar-pitch"><i></i></span></div>
+          <div><dt>Roll</dt><dd id="ax-roll">+0.00 (+0%)</dd><span class="bar" id="bar-roll"><i></i></span></div>
+        </dl>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button class="btn primary" id="btn-manual-on" type="button">Enable manual control</button>
+      <button class="btn" id="btn-manual-off" type="button">Disable manual control</button>
+      <button class="btn" id="btn-reset-controls" type="button">Reset controls</button>
+      <button class="btn" id="btn-center-att" type="button">Center roll, pitch, yaw</button>
+      <label class="check"><input type="checkbox" id="chk-hold-throttle"> Hold throttle on release</label>
+    </div>
+    <p class="note">Keys: arrows move the focused stick (Shift = bigger step), Space centers. Gamepad sticks also work when connected.</p>
+  </section>
+
+  <section class="panel" id="panel-gesture" aria-labelledby="h-gest">
+    <div class="panel-head"><h2 id="h-gest">Gesture control</h2><span class="badge" id="gest-badge">OFF</span></div>
+    <div class="toolbar">
+      <button class="btn primary" id="btn-gest-start" type="button">Start tracking</button>
+      <button class="btn" id="btn-calibrate" type="button">Calibrate neutral</button>
+      <label class="check"><input type="checkbox" id="chk-gest-control"> Use gestures as control source</label>
+    </div>
+    <div class="form">
+      <label>Neutral gesture<select id="gest-neutral"><option value="fist">Closed fist</option><option value="open">Open palm</option></select></label>
+      <label>Neutral gesture action<select id="gest-action"><option value="hover">Hover (neutral)</option><option value="land">Controlled landing</option></select></label>
+      <label>Horizontal hand motion<select id="gest-hmap"><option value="roll">Roll</option><option value="yaw">Yaw</option></select></label>
+      <label>On tracking loss<select id="gest-lost"><option value="descend">Descend slowly</option><option value="hover">Hover (neutral)</option></select></label>
+      <label>Dead zone <output id="out-gdead">0.15</output><input type="range" id="gest-dead" min="0.05" max="0.4" step="0.01" value="0.15"></label>
+      <label>Smoothing <output id="out-gsmooth">8</output><input type="range" id="gest-smooth" min="2" max="25" step="1" value="8"></label>
+      <label class="check"><input type="checkbox" id="chk-depth"> Hand distance controls throttle (needs calibration)</label>
+    </div>
+    <dl class="kv">
+      <div><dt>Tracking</dt><dd id="gest-status">Off</dd></div>
+      <div><dt>Confidence</dt><dd id="gest-conf">-</dd></div>
+      <div><dt>Gesture</dt><dd id="gest-pose">-</dd></div>
+      <div><dt>Signals</dt><dd id="gest-signals">-</dd></div>
+    </dl>
+    <p class="note">Steer with the non-neutral pose: hand position (relative to calibration) maps to the signals. Experimental input, not a safety-certified controller.</p>
+  </section>
+
+  <aside class="side" aria-label="Flight control and telemetry">
+    <section class="panel" id="panel-flight" aria-labelledby="h-fc">
+      <div class="panel-head"><h2 id="h-fc">Flight control</h2></div>
+      <div class="toolbar">
+        <label class="check"><input type="checkbox" id="chk-sim" checked> Simulation mode</label>
+      </div>
+      <dl class="kv"><div><dt>Control source</dt><dd id="src-label">None</dd></div></dl>
+      <div class="toolbar">
+        <button class="btn primary" id="btn-arm" type="button">Arm</button>
+        <button class="btn" id="btn-reset-sim" type="button">Reset simulation</button>
+      </div>
+      <label class="form-row">Tilt limit <output id="out-tilt">25&deg;</output><input type="range" id="tilt-limit" min="10" max="45" step="1" value="25"></label>
+    </section>
+
+    <section class="panel" id="panel-telemetry" aria-labelledby="h-tm">
+      <div class="panel-head"><h2 id="h-tm">Telemetry</h2><span class="badge sim">SIMULATED</span></div>
+      <dl class="kv mono">
+        <div><dt>Roll</dt><dd id="tm-roll">0.0&deg;</dd></div>
+        <div><dt>Pitch</dt><dd id="tm-pitch">0.0&deg;</dd></div>
+        <div><dt>Yaw / heading</dt><dd id="tm-yaw">0&deg;</dd></div>
+        <div><dt>Throttle</dt><dd id="tm-throttle">0%</dd></div>
+        <div><dt>Altitude (sim)</dt><dd id="tm-alt">0.0 m</dd></div>
+        <div><dt>Vertical speed (sim)</dt><dd id="tm-vs">0.0 m/s</dd></div>
+        <div><dt>Connection</dt><dd id="tm-conn">-</dd></div>
+        <div><dt>Control source</dt><dd id="tm-src">None</dd></div>
+        <div><dt>Frame rate</dt><dd id="tm-fps">-</dd></div>
+        <div><dt>Camera</dt><dd id="tm-cam">Off</dd></div>
+      </dl>
+      <h3>Command output (simulated adapter)</h3>
+      <pre class="log" id="cmd-log" aria-live="off">No commands sent.</pre>
+    </section>
+  </aside>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
